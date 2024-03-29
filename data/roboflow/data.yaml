@@ -1,0 +1,13 @@
+train: data/roboflow/train/images
+val: data/roboflow/valid/images
+test: data/roboflow/test/images
+
+nc: 1
+names: ["Pothole"]
+
+roboflow:
+  workspace: pothole-project-km8jd
+  project: pothole-detection-jswnj
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/pothole-project-km8jd/pothole-detection-jswnj/dataset/3
