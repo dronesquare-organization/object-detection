@@ -1,6 +1,6 @@
-train: data/roboflow/train/images
-val: data/roboflow/valid/images
-test: data/roboflow/test/images
+train: ./data/roboflow/train/images
+val: ./data/roboflow/valid/images
+test: ./data/roboflow/test/images
 
 nc: 1
 names: ["Pothole"]
