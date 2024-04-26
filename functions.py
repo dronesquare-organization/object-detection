@@ -26,10 +26,28 @@ class S3:
         )
         return buffer.getvalue()
 
+    def upload(
+        self,
+        file: bytes,
+        path: str,
+        content_type: str = "binary/octet-stream",
+        metadata: dict = {},
+    ):
+        self.client.upload_fileobj(
+            io.BytesIO(file),
+            self.bucket_name,
+            str(path),
+            ExtraArgs={
+                "ContentType": content_type,
+                "Metadata": metadata,
+            },
+        )
+
     def download_file(self, target_path, save_path):
         """오브젝트를 다운로드하여 save_path로 저장"""
         with open(save_path, "wb") as file_obj:
             self.client.download_fileobj(self.bucket_name, str(target_path), file_obj)
+        print(f"[S3.download_file] {target_path} -> {save_path}")
 
     def download_files(self, target_path_list, save_path_list):
         with ThreadPoolExecutor(max_workers=os.cpu_count() * 10) as executor:
@@ -92,26 +110,12 @@ def get_tiles(
 
 
 def entry(
-    AWS_ACCESS_KEY_ID=None,
-    AWS_SECRET_ACCESS_KEY=None,
-    AWS_DEFAULT_REGION=None,
-    S3_BUCKET_NAME=None,
-    PROJECT_ID=None,
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    AWS_DEFAULT_REGION,
+    S3_BUCKET_NAME,
+    PROJECT_ID,
 ):
-    if not all(
-        [
-            AWS_ACCESS_KEY_ID,
-            AWS_SECRET_ACCESS_KEY,
-            AWS_DEFAULT_REGION,
-            S3_BUCKET_NAME,
-            PROJECT_ID,
-        ]
-    ):
-        AWS_ACCESS_KEY_ID = input("AWS_ACCESS_KEY_ID: ")
-        AWS_SECRET_ACCESS_KEY = input("AWS_SECRET_ACCESS_KEY: ")
-        AWS_DEFAULT_REGION = input("AWS_DEFAULT_REGION: ")
-        S3_BUCKET_NAME = input("S3_BUCKET_NAME: ")
-        PROJECT_ID = input("PROJECT_ID: ")
     s3 = S3(
         AWS_ACCESS_KEY_ID,
         AWS_SECRET_ACCESS_KEY,
@@ -135,7 +139,7 @@ def entry(
         area_list=request_json["area"],
         save_dir=save_dir,
     )
-    return {"gsd": gsd_cm, "tiles": save_dir}
+    return {"gsd": gsd_cm, "tiles": save_dir, "s3_client": s3}
 
 
 def predict(
@@ -169,16 +173,30 @@ def predict(
         + ["--source", str(target_dir / "*.png")]
         + ["--name", dir_name]
         + ["--project", str(target_dir)]
+        + ["--conf-thres", "0.5"]  # 신뢰도 역치를 0.5로 상향조정
     )
     settings = ["--exist-ok", "--save-txt", "--save-conf"]
     subprocess.run(execute + options + settings)
     return [
         {
             "coords": tuple(map(float, file.stem.split("_"))),
-            "boundary": [
+            "boundaries": [
                 line.split(" ")[1:] for line in file.read_text().split("\n") if line
             ],
         }
         for file in (target_dir / dir_name / "labels").iterdir()
         if file.is_file()
     ]
+
+
+def calc_diagonal_cm(width, height, gsd):
+    """YOLO 형식 라벨의 너비, 높이 값으로 대각선 길이를 계산합니다."""
+    width_cm = float(width) * 256 * float(gsd)
+    height_cm = float(height) * 256 * float(gsd)
+    return math.sqrt(width_cm**2 + height_cm**2)
+
+
+def upload_response(project_id, response: list, s3: S3):
+    upload_path = f"public/{project_id}/auto-detection/pothole/result.json"
+    json.dump(response, buffer := io.StringIO())
+    s3.upload(buffer.getvalue().encode(), upload_path, content_type="application/json")
