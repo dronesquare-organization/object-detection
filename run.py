@@ -2,12 +2,11 @@ import shutil
 from pathlib import Path
 from functions import entry, predict, calc_diagonal_cm, upload_response
 
-AWS_ACCESS_KEY_ID = ...
-AWS_SECRET_ACCESS_KEY = ...
+AWS_ACCESS_KEY_ID = "..."
+AWS_SECRET_ACCESS_KEY = "..."
 AWS_DEFAULT_REGION = "ap-northeast-2"
-S3_BUCKET_NAME = "dev-drone-square-bucket"
-PROJECT_ID = "16"
-
+S3_BUCKET_NAME = "prod-drone-square-bucket-blue"
+PROJECT_ID = "199"
 input_data = entry(
     AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY,
@@ -15,7 +14,6 @@ input_data = entry(
     S3_BUCKET_NAME,
     PROJECT_ID,
 )
-
 labels = predict(target_dir=input_data["tiles"])
 
 
@@ -30,7 +28,7 @@ def severity_level(cm: float):
         return 4
 
 
-response = []
+response = {"issues": []}
 for label in labels:
     severities = []
     for boundary in label["boundaries"]:
@@ -38,9 +36,9 @@ for label in labels:
         diagonal_cm = calc_diagonal_cm(width, height, input_data["gsd"])
         severities.append(severity_level(diagonal_cm))
 
-    def calc_percentage(grade: int):
+    def calc_percentage(grade: float):
         percent = severities.count(grade) / len(severities) * 100
-        return f"{round(percent)}%"
+        return percent
 
     result = {
         "point": list(label["coords"]),
@@ -52,10 +50,7 @@ for label in labels:
             "grade4": calc_percentage(4),
         },
     }
-
-    response.append(result)
-
+    response["issues"].append(result)
 upload_response(PROJECT_ID, response, input_data["s3_client"])
-
 work_dir = Path(__file__).parent / f"tiles/{PROJECT_ID}"
 shutil.rmtree(work_dir, ignore_errors=True)
